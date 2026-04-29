@@ -61,4 +61,4 @@ jobs:
       - name: Unit Tests
         run: | 
           uv add --dev pytest coverage # Should be redundant with the pyproject.toml
-          uv run pytest --cov
+          uv run pytest -cov
