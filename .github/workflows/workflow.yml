@@ -40,8 +40,8 @@ jobs:
       - name: Lint and format
         run: |
           uv add --dev ruff  # Should be redundant with the pyproject.toml
-          ruff check --fix
-          ruff format
+          uv run ruff check --fix
+          uv run ruff format
 
 #      - name: Type checks
 #        run: |
