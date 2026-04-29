@@ -30,6 +30,16 @@ line-length = 120
 docstring-code-format = true
 docstring-code-line-length = 20
 
+[tool.coverage.run]
+source = [
+    "src/"
+]
+omit = [
+    "tests/*",
+    "*/tests/*"
+]
+
+
 [dependency-groups]
 dev = [
     "coverage>=7.13.5",

@@ -1,2 +1,5 @@
-def empty_test():
-    assert 1 == 1
+from src.main import main
+
+
+def test_main_exists():
+    assert main() is None

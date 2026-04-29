@@ -39,7 +39,7 @@ jobs:
 
       - name: Lint and format
         run: |
-          uv add --dev ruff  # Should be redundant with the pyproject.toml
+          uv add --dev ruff  # Redundant with pyproject.toml
           uv run ruff check --fix
           uv run ruff format
 
@@ -53,12 +53,13 @@ jobs:
 #          uv tool install bandit
 #          bandit -r your_package_name
 
-#      - name: Upload coverage
-#        if: ${{ matrix.python-version == '3.13' }}
-#        run: coverage xml
-        # then use an action to upload to GitHub or codecov
-
-      - name: Unit Tests
+      - name: Unit tests and code coverage
         run: | 
-          uv add --dev pytest coverage # Should be redundant with the pyproject.toml
-          uv run pytest -cov
+          uv run coverage run -m pytest .
+          uv run coverage report --format=markdown --show-missing --skip-covered > coverage.md
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-md
+          path: coverage.md
