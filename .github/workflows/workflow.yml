@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 jobs:
-  test:
+  base:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -43,15 +43,10 @@ jobs:
           uv run ruff check --fix
           uv run ruff format
 
-#      - name: Type checks
-#        run: |
-#           uv add --dev  install mypy # Redundant with pyproject.toml
-#           mypy .
-
       - name: Security scan of local code
         run: |
           uv add --dev bandit # Redundant with pyproject.toml
-          bandit -r . -c pyproject.toml -exclude_dirs=".venv" -f html -o bandit-code-report.htm
+          uv run bandit -r . -c pyproject.toml -exclude_dirs=".venv" -f html -o bandit-code-report.htm
           
       - name: Upload bandit code scan artifact
         uses: actions/upload-artifact@v4
