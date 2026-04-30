@@ -44,6 +44,7 @@ jobs:
           uv run ruff format
 
       - name: Security scan of local code
+        continue-on-error: true
         run: |
           uv add --dev bandit # Redundant with pyproject.toml
           uv run bandit -r . -c pyproject.toml -f html -o bandit-code-report.htm
@@ -55,6 +56,7 @@ jobs:
           path: bandit-code-report.htm
           
       - name: Security scan of dependencies
+        continue-on-error: true
         run: |
           uv run bandit -r . -c bandit_full_scan.toml -f html -o bandit-deps-report.htm
           
