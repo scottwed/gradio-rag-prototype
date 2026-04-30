@@ -41,7 +41,7 @@ omit = [
 ]
 
 [tool.bandit]
-exclude_dirs = ["tests"]
+exclude_dirs = ["tests", ".venv"]
 skips = ['B101']
 
 [dependency-groups]
