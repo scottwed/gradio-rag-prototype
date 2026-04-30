@@ -1,0 +1,53 @@
+[project]
+name = "gradio-rag-prototype"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "gradio>=6.13.0",
+    "openai>=2.33.0",
+]
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+]
+    extend-select = ["E501"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 20
+
+[tool.coverage.run]
+source = [
+    "src/"
+]
+omit = [
+    "tests/*",
+    "*/tests/*"
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ['B101']
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "coverage>=7.13.5",
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+]
