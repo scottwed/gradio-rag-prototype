@@ -46,7 +46,7 @@ jobs:
       - name: Security scan of local code
         run: |
           uv add --dev bandit # Redundant with pyproject.toml
-          uv run bandit -r . -c pyproject.toml -exclude_dirs=".venv" -f html -o bandit-code-report.htm
+          uv run bandit -r . -c pyproject.toml -x=".venv" -f html -o bandit-code-report.htm
           
       - name: Upload bandit code scan artifact
         uses: actions/upload-artifact@v4
