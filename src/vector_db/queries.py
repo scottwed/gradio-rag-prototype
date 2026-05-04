@@ -1,4 +1,6 @@
-DDL = """
+from typing import Final, LiteralString
+
+DDL: Final[LiteralString] = """
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -31,7 +33,7 @@ CREATE INDEX IF NOT EXISTS documents_source_path_idx
     ON documents (source_path);
 """
 
-UPSERT_SQL = """
+UPSERT_SQL: Final[LiteralString] = """
 INSERT INTO documents (
     source_path, file_name, relative_path, chunk_index, content, metadata, embedding
 )
@@ -44,4 +46,9 @@ ON CONFLICT (source_path) DO UPDATE SET
     metadata = EXCLUDED.metadata,
     embedding = EXCLUDED.embedding,
     updated_at = now();
+"""
+
+ROW_COUNT: Final[LiteralString] = """
+SELECT count(*) as row_count
+FROM {table_name}
 """

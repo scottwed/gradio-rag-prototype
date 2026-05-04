@@ -2,11 +2,13 @@ import os
 from pathlib import Path
 
 import gradio as gr
+from loguru import logger
 from openai import OpenAI
 
 from shared.shared import answer
+from vector_db.db_mgmt import db_prep
 
-sample_folder = Path(__file__).parent.joinpath("sample").joinpath("gradio_md")
+sample_folder = Path(__file__).parent.parent.joinpath("sample").joinpath("gradio_md")
 PG_PASS = os.environ.get("PG_PASSWORD", "")
 DB_DSN = os.environ.get("DATABASE_URL", f"postgresql://postgres:{PG_PASS}@127.0.0.1:5432/postgres")
 ROOT_FOLDER = Path(os.environ.get("MD_ROOT_FOLDER", sample_folder))
@@ -37,13 +39,15 @@ def gradio_chat(message, history):
         return f"Error: {str(e)}"
 
 
-if __name__ == '__main__':
-    # TODO: Make this dynamic, execute only once.
-    # load_fresh_db(db_dsn=DB_DSN, root_folder=ROOT_FOLDER)
-
-    demo = gr.ChatInterface(
-        fn=gradio_chat,
-        title="RAG Prototype",
-        description="Ask questions about the processed markdown files.",
-    )
-    demo.launch()
+if __name__ == "__main__":
+    # Dynamic, will ingest only once.
+    ready_flag = db_prep(db_dsn=DB_DSN, root_folder=ROOT_FOLDER, embed_client=my_embed_client, embed_model=EMBED_MODEL)
+    if ready_flag:
+        demo = gr.ChatInterface(
+            fn=gradio_chat,
+            title="RAG Prototype",
+            description="Ask questions about the ingested markdown files.",
+        )
+        demo.launch()
+    else:
+        logger.error("Unable to run, database was not viable.")

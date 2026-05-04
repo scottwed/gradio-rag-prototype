@@ -5,9 +5,10 @@ import psycopg
 from loguru import logger
 from openai import OpenAI
 from pgvector.psycopg import register_vector
+from psycopg import Connection, sql
 
 from shared.shared import embed_text
-from vector_db.queries import DDL, UPSERT_SQL
+from vector_db.queries import DDL, ROW_COUNT, UPSERT_SQL
 
 
 def chunk_text(text: str, max_chars: int = 4000) -> list[str]:
@@ -38,14 +39,14 @@ def iter_markdown_files(root: Path):
             yield path
 
 
-def ensure_db(conn):
-    logger.info("Establishing DB connection and defining empty table if needed")
+def ensure_db(conn: Connection):
+    logger.info("Defining empty table, extensions, and indexes if needed")
     with conn.cursor() as cur:
         cur.execute(DDL)
     conn.commit()
 
 
-def ingest_file(conn, path: Path, root: Path, embed_client: OpenAI, embed_model: str):
+def ingest_file(conn: Connection, path: Path, root: Path, embed_client: OpenAI, embed_model: str):
     logger.info("Starting ingestion from {}", path.absolute())
     content = path.read_text(encoding="utf-8", errors="ignore")
     rel = str(path.relative_to(root))
@@ -62,13 +63,28 @@ def ingest_file(conn, path: Path, root: Path, embed_client: OpenAI, embed_model:
             cur.execute(UPSERT_SQL, row)
 
 
-def load_fresh_db(db_dsn: str, root_folder: Path, embed_client: OpenAI, embed_model: str):
+def is_table_empty(conn, table_name: str) -> bool:
+    result = True
+    with conn.cursor() as cur:
+        prepared_query = sql.SQL(ROW_COUNT).format(table_name=sql.Identifier(table_name)).as_string(conn)
+        row_count = cur.execute(prepared_query).fetchone()[0]
+        logger.info("Table {} has {} rows", table_name, row_count)
+        result = row_count == 0
+    return result
+
+
+def db_prep(db_dsn: str, root_folder: Path, embed_client: OpenAI, embed_model: str) -> bool:
     with psycopg.connect(db_dsn) as conn:
         ensure_db(conn)
         register_vector(conn)
-        logger.info("Starting recursive ingestion of files under: {}", root_folder.absolute())
-        if not root_folder.is_dir():
-            logger.error("Specified root path must be a folder: {}.  Exiting", root_folder.absolute())
-        for md_file in iter_markdown_files(root_folder):
-            ingest_file(conn, md_file, root_folder, embed_client, embed_model)
+        if is_table_empty(conn, "documents"):
+            logger.info("Starting recursive ingestion of files under: {}", root_folder.absolute())
+            if not root_folder.is_dir():
+                logger.error("Specified root path must be a folder: {}. Exiting", root_folder.absolute())
+                return False
+            for md_file in iter_markdown_files(root_folder):
+                ingest_file(conn, md_file, root_folder, embed_client, embed_model)
+        else:
+            logger.info("DB is already populated. Skipping ingestion.")
         conn.commit()
+    return True
