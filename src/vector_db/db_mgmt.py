@@ -33,10 +33,29 @@ def chunk_text(text: str, max_chars: int = 4000) -> list[str]:
     return chunks
 
 
-def iter_markdown_files(root: Path):
-    for path in root.rglob("*.md"):
+def iter_text_files(root: Path):
+    # TODO: Move these hardcoded items to an input YAML file
+    # TODO: Add support for regex patterns
+    # TODO: Pre-filter to perform redaction/exclusion of sensitive data
+    # TODO: Inspect file header to avoid binaries, PDFs, and images
+    # Tweak these lists as needed.  Take care to avoid accidentally returning any files that
+    #  could contain sensitive data
+    allowed_extensions = ['', '.bat', '.c', '.csv', '.css', '.db', '.h', '.htm', '.html', '.js', '.json',
+                          '.lark', '.md', '.ne', '.py', '.results', '.rst', '.sample', '.spatch', '.sh',
+                          '.test', '.txt', '.typed', '.xml', '.yaml', '.yml']
+    # Note: pyproject.toml might contain secrets, check your source data before adding .toml to allowed extensions.
+    blocked_folders = ['.idea', '.git']
+    allowed_extensions = [x.lower() for x in allowed_extensions]
+    blocked_folders = [x.lower() for x in blocked_folders]
+
+    for path in root.rglob("*"):
+        if any(part.lower() in blocked_folders for part in path.parts):
+            continue
         if path.is_file():
-            yield path
+            if path.suffix.lower() in allowed_extensions and not path.name.startswith('.'):
+                yield path
+            else:
+                logger.warning("Skipping: {}", path.absolute())
 
 
 def ensure_db(conn: Connection):
