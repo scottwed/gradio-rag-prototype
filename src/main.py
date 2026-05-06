@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from sys import stderr
 
 import gradio as gr
 from loguru import logger
@@ -8,7 +9,12 @@ from openai import OpenAI
 from shared.shared import answer
 from vector_db.db_mgmt import db_prep
 
-sample_folder = Path(__file__).parent.parent.joinpath("sample").joinpath("gradio_md")
+logger.remove()  # Remove all existing handlers
+logger.add(stderr, level="INFO")  # Prevent debug and lower from appearing on console
+logger.add("proto_rag.log", rotation="5 MB", retention=10)  # Write detailed logs with rotation
+
+# sample_folder = Path(__file__).parent.parent.joinpath("sample").joinpath("gradio_md")
+input_folders = [Path(r'E:\git\lark'), Path(r'E:\git\bind9')]
 PG_PASS = os.environ.get("PG_PASSWORD", "")
 DB_DSN = os.environ.get("DATABASE_URL", f"postgresql://postgres:{PG_PASS}@127.0.0.1:5432/postgres")
 ROOT_FOLDER = Path(os.environ.get("MD_ROOT_FOLDER", sample_folder))
