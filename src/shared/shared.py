@@ -2,15 +2,19 @@ import numpy as np
 import psycopg
 from loguru import logger
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessage, ChatCompletionMessageParam
 from pgvector.psycopg import register_vector
 
 from shared.queries import RETRIEVE
 
 
-def embed_text(text: str, embed_client: OpenAI, embed_model: str) -> list[float]:
+def embed_text(text: str|list[str], embed_client: OpenAI, embed_model: str) -> list[list[float]]:
     resp = embed_client.embeddings.create(model=embed_model, input=text)
-    # Truncate to 4000 to fit pgvector HNSW/IVFFlat limits
-    return np.array(resp.data[0].embedding)[:4000].tolist()
+    # For Qwen - Truncate to 4000 to fit pgvector HNSW/IVFFlat limits
+    # return np.array(resp.data[0].embedding)[:4000].tolist()
+
+    # For granite + batch import
+    return [item.embedding for item in resp.data]
 
 
 def retrieve(
@@ -20,7 +24,7 @@ def retrieve(
     db_dsn: str,
     k=5,
 ):
-    q_emb = embed_text(query, embed_client, embed_model)
+    q_emb = embed_text(query, embed_client, embed_model)[0]
 
     with psycopg.connect(db_dsn) as conn:
         register_vector(conn)
@@ -33,6 +37,9 @@ def answer(query, history, chat_client: OpenAI, chat_model: str, embed_client: O
     try:
         rows = retrieve(query, embed_client=embed_client, embed_model=embed_model, db_dsn=db_dsn, k=6)
         context = "\n\n".join(f"[{r[0]}#chunk{r[2]}]\n{r[3]}" for r in rows)
+
+        # messages = ChatCompletionMessageParam()
+        # TODO: Append project guidance markdown to first system message.
 
         messages = [
             {

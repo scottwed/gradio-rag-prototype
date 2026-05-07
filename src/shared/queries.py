@@ -3,7 +3,7 @@ from typing import Final, LiteralString
 RETRIEVE: Final[LiteralString] = """
  WITH q AS (
      SELECT plainto_tsquery('english', %(query)s) AS tsq,
-            %(emb)s::vector(4000) AS qemb
+            %(emb)s::vector(384) AS qemb
  )
  SELECT
      d.source_path,

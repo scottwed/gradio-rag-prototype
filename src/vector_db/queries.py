@@ -6,13 +6,14 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS documents (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_path   text NOT NULL UNIQUE,
+    source_path   text NOT NULL,
     file_name     text NOT NULL,
     relative_path text NOT NULL,
     chunk_index   int NOT NULL DEFAULT 0,
     content       text NOT NULL,
     metadata      jsonb NOT NULL DEFAULT '{}'::jsonb,
-    embedding     halfvec(4000) NOT NULL,
+--  embedding     halfvec(4000) NOT NULL,
+    embedding     vector(384) NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now()
 );
@@ -26,25 +27,28 @@ GENERATED ALWAYS AS (
 CREATE INDEX IF NOT EXISTS documents_fts_gin
     ON documents USING gin(fts);
 
-CREATE INDEX IF NOT EXISTS documents_embedding_ivfflat
-    ON documents USING ivfflat (embedding halfvec_cosine_ops) WITH (lists = 100);
+-- CREATE INDEX IF NOT EXISTS documents_embedding_ivfflat
+--     ON documents USING ivfflat (embedding halfvec_cosine_ops) WITH (lists = 100);
 
-CREATE INDEX IF NOT EXISTS documents_source_path_idx
-    ON documents (source_path);
+CREATE INDEX IF NOT EXISTS documents_embedding_hnsw
+    ON documents USING hnsw (embedding vector_cosine_ops);
+    
+CREATE UNIQUE INDEX IF NOT EXISTS documents_source_path_chunk_index
+    ON documents (source_path, chunk_index);
 """
 
 UPSERT_SQL: Final[LiteralString] = """
 INSERT INTO documents (
-    source_path, file_name, relative_path, chunk_index, content, metadata, embedding
+    source_path, file_name, relative_path, 
+    chunk_index, content, metadata, embedding
 )
 VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
-ON CONFLICT (source_path) DO UPDATE SET
-    file_name = EXCLUDED.file_name,
+ON CONFLICT (source_path, chunk_index) DO UPDATE SET
+    file_name     = EXCLUDED.file_name,
     relative_path = EXCLUDED.relative_path,
-    chunk_index = EXCLUDED.chunk_index,
-    content = EXCLUDED.content,
-    metadata = EXCLUDED.metadata,
-    embedding = EXCLUDED.embedding,
+    content       = EXCLUDED.content,
+    metadata      = EXCLUDED.metadata,
+    embedding     = EXCLUDED.embedding,
     updated_at = now();
 """
 
