@@ -32,6 +32,8 @@ my_embed_client = OpenAI(base_url=EMBED_BASE_URL, api_key=os.getenv("EMBED_API_K
 
 
 def gradio_chat(message, history):
+    # TODO: Enhance the context that's returned, pulling all chunks from the matched file.
+    # TODO: If that's insufficient, convert to a tool calling architecture.
     try:
         response = answer(
             query=message,
