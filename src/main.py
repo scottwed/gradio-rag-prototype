@@ -43,6 +43,7 @@ def gradio_chat(message, history):
             embed_client=my_embed_client,
             embed_model=EMBED_MODEL,
             db_dsn=DB_DSN,
+            chunk_limit=10,
         )
         return response
     except Exception as e:

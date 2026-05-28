@@ -1,5 +1,6 @@
-from concurrent.futures import ThreadPoolExecutor
 import json
+import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import psycopg
@@ -9,10 +10,10 @@ from pgvector.psycopg import register_vector
 from psycopg import Connection, sql
 
 from shared.shared import embed_text
-from vector_db.queries import DDL, ROW_COUNT, UPSERT_SQL
+from vector_db.queries import DDL, INSERT_SQL, ROW_COUNT
 
 
-def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> list[str]:
+def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200, doc_type='.txt') -> list[str]:
     # This is primitive, but good enough for the intended content.
     # It's not content aware, meaning that it will accidentally break up
     #  HTML tables and Python methods / class definitions
@@ -22,19 +23,46 @@ def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> list[str
         return []
     chunks = []
     start = 0
-    while start < len(text):
-        end = min(start + max_chars, len(text))
-        if end < len(text):
-            cut = text.rfind("\n\n", start, end)
-            if cut == -1 or cut <= start:
-                cut = text.rfind("\n", start, end)
-            if cut == -1 or cut <= start:
-                cut = end
-            end = cut
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        start = end
+    if doc_type == '.md':
+        # Split on markdown headers that use the # character
+        header_state = []
+        header_pattern = r'^(#+)(\s+[^\n]+)'
+        header_cp = re.compile(header_pattern, re.MULTILINE)
+
+        previous_index = 0
+        for header_match in header_cp.finditer(text):
+            if previous_index > 0:
+                header_string = ' | '.join(header_state)
+                next_chunk = str(header_string + text[previous_index:header_match.start()]).strip()
+                next_chunk = next_chunk.replace('\n\n', '\n')
+                # Skip empty header sections
+                if next_chunk != header_string:
+                    chunks.append(next_chunk)
+            previous_index = header_match.end()
+
+            header_depth = len(header_match.group(1)) - 1
+            # Truncate header_state if we encounter a shallower heading level
+            header_state = header_state[0:header_depth]
+            header_state.append(header_match.group(0))
+        if previous_index > 0:
+            next_chunk = str(" | ".join(header_state) + text[previous_index::]).strip()
+            next_chunk = next_chunk.replace("\n\n", "\n")
+            chunks.append(next_chunk)
+
+    else:
+        while start < len(text):
+            end = min(start + max_chars, len(text))
+            if end < len(text):
+                cut = text.rfind("\n\n", start, end)
+                if cut == -1 or cut <= start:
+                    cut = text.rfind("\n", start, end)
+                if cut == -1 or cut <= start:
+                    cut = end
+                end = cut
+            chunk = text[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            start = end
     return chunks
 
 
@@ -123,50 +151,52 @@ def is_valid_text_file(path: Path) -> bool:
     return True
 
 
-def ingest_file_parallel(conn: Connection, path: Path, root: Path, embed_client: OpenAI, embed_model: str):
-    logger.info("Ingesting  {}", path.absolute())
-    content = path.read_text(encoding="utf-8", errors="ignore")
+def ingest_file_parallel(conn: Connection, file_path: Path, root: Path,
+                         embed_client: OpenAI, embed_model: str):
+    logger.info("Ingesting {}", file_path.absolute())
+    content = file_path.read_text(encoding="utf-8", errors="ignore")
     if len(content) == 0:
-        logger.info("Skipping empty file {}", path.absolute())
+        logger.info("Skipping empty file {}", file_path.absolute())
         return
-    if not is_valid_text_file(path):
+    if not is_valid_text_file(file_path):
         return
 
-    rel = str(path.relative_to(root))
-    all_chunks = chunk_text(content)
+    rel = str(file_path.relative_to(root))
+    all_chunks = chunk_text(content, doc_type=file_path.suffix)
     rows = []
 
+    # Chunk group size should be small enough for the embedding model to efficiently process in a single request.
     batch_size = 32
     chunk_groups = [all_chunks[i:i + batch_size] for i in range(0, len(all_chunks), batch_size)]
 
-    all_vectors = []
+    all_vectors: list[list[float]] = []
     with ThreadPoolExecutor(max_workers=4) as executor:
         for result_batch in executor.map(lambda g: embed_text(g, embed_client, embed_model), chunk_groups):
             all_vectors.extend(result_batch)
 
-    # logger.info("Vector size was {}", len(all_vectors[0]))
+    logger.info("Vector size was {}", len(all_vectors))
     if len(all_chunks) != len(all_vectors):
         logger.error("Encoding issue: Number of returned vectors ({}) does not "
                      "match number of submitted chunks ({})", len(all_vectors), len(all_chunks))
 
     for i, emb in enumerate(all_vectors):
-        source_type = "text" if not path.suffix else path.suffix
+        source_type = "text" if not file_path.suffix else file_path.suffix
         meta = {"chunk_index": i, "chunk_count": len(all_chunks), "source_type": source_type}
         rows.append((
-            str(path.resolve()),    # source_path (pk 1/2)
-            path.name,              # file_name
-            rel,                    # relative_path inside repo
-            i,                      # chunk_index (pk 2/2)
-            all_chunks[i],          # content of this chunk
-            json.dumps(meta),       # metadata JSONB column
+            str(file_path.resolve()),  # source_path (pk 1/2)
+            file_path.name,  # file_name
+            rel,  # relative_path inside repo
+            i,  # chunk_index (pk 2/2)
+            all_chunks[i],  # content of this chunk
+            json.dumps(meta),  # metadata JSONB column
             emb                     # embedding vector (list[float])
         ))
 
     with conn.cursor() as cur:
         for i, row in enumerate(rows):
             if i % 100 == 0:
-                logger.info("Large file upsert progress: {} - {}", row[0], row[-2])
-            cur.execute(UPSERT_SQL, row)
+                logger.info("Large file insert progress: {} - {}", row[0], row[-2])
+            cur.execute(INSERT_SQL, row)
 
 
 def is_table_empty(conn, table_name: str) -> bool:
@@ -191,8 +221,8 @@ def db_prep(db_dsn: str, input_folders: list[Path], embed_client: OpenAI, embed_
 
             for input_folder in input_folders:
                 logger.info("Starting recursive ingestion of text files under: {}", input_folder.absolute())
-                for md_file in iter_text_files(input_folder):
-                    ingest_file_parallel(conn, md_file, input_folder, embed_client, embed_model)
+                for text_file in iter_text_files(input_folder):
+                    ingest_file_parallel(conn, text_file, input_folder, embed_client, embed_model)
         else:
             logger.info("DB is already populated. Skipping ingestion.")
         conn.commit()
