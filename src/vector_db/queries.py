@@ -37,6 +37,29 @@ INSERT INTO documents (
 VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
 """
 
+# Use when the input data contains large, redundant markdown files,
+# such as changelogs written by AI coding platforms.
+DELETE_DUPLICATES: Final[LiteralString] = """
+DELETE FROM documents
+WHERE (source_path, chunk_index) IN (
+    SELECT source_path, chunk_index
+    FROM (
+        SELECT 
+            source_path, 
+            chunk_index,
+            COUNT(*) OVER (PARTITION BY content) as occurrence_count,
+            ROW_NUMBER() OVER (
+                PARTITION BY content 
+                ORDER BY LENGTH(source_path) ASC
+            ) as rank_in_group
+        FROM documents
+        WHERE source_path LIKE '%.md'
+    ) subquery
+    WHERE occurrence_count > 1  -- Limit to duplicate content
+      AND rank_in_group > 1     -- Skip the shortest source_path
+);
+"""
+
 ROW_COUNT: Final[LiteralString] = """
 SELECT count(*) as row_count
 FROM {table_name}

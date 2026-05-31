@@ -10,7 +10,7 @@ from pgvector.psycopg import register_vector
 from psycopg import Connection, sql
 
 from shared.shared import embed_text
-from vector_db.queries import DDL, INSERT_SQL, ROW_COUNT
+from vector_db.queries import DDL, DELETE_DUPLICATES, INSERT_SQL, ROW_COUNT
 
 
 def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200, doc_type='.txt') -> list[str]:
@@ -97,23 +97,6 @@ def ensure_db(conn: Connection):
     with conn.cursor() as cur:
         cur.execute(DDL)
     conn.commit()
-
-
-# def ingest_file(conn: Connection, path: Path, root: Path, embed_client: OpenAI, embed_model: str):
-#     logger.info("Ingesting  {}", path.absolute())
-#     content = path.read_text(encoding="utf-8", errors="ignore")
-#     rel = str(path.relative_to(root))
-#     chunks = chunk_text(content)
-#     rows = []
-#     for i, chunk in enumerate(chunks):
-#         emb = embed_text(chunk, embed_client=embed_client, embed_model=embed_model)
-#         source_type = "text" if not path.suffix else path.suffix
-#         meta = {"chunk_index": i, "chunk_count": len(chunks), "source_type": source_type }
-#         rows.append((str(path.resolve()), path.name, rel, i, chunk, json.dumps(meta), emb))
-#
-#     with conn.cursor() as cur:
-#         for row in rows:
-#             cur.execute(UPSERT_SQL, row)
 
 
 def is_valid_text_file(path: Path) -> bool:
@@ -209,6 +192,15 @@ def is_table_empty(conn, table_name: str) -> bool:
     return result
 
 
+def delete_duplicate_chunks(conn) -> int:
+    result = 0
+    with conn.cursor() as cur:
+        prepared_query = sql.SQL(DELETE_DUPLICATES).as_string(conn)
+        status_message = cur.execute(prepared_query).statusmessage
+        logger.info("{} duplicate content rows", status_message)
+        result = status_message
+    return result
+
 def db_prep(db_dsn: str, input_folders: list[Path], embed_client: OpenAI, embed_model: str) -> bool:
     with psycopg.connect(db_dsn) as conn:
         ensure_db(conn)
@@ -223,6 +215,7 @@ def db_prep(db_dsn: str, input_folders: list[Path], embed_client: OpenAI, embed_
                 logger.info("Starting recursive ingestion of text files under: {}", input_folder.absolute())
                 for text_file in iter_text_files(input_folder):
                     ingest_file_parallel(conn, text_file, input_folder, embed_client, embed_model)
+            delete_duplicate_chunks(conn)
         else:
             logger.info("DB is already populated. Skipping ingestion.")
         conn.commit()
