@@ -1,3 +1,5 @@
+import re
+
 import psycopg
 from loguru import logger
 from openai import OpenAI
@@ -19,26 +21,27 @@ def retrieve(
     k= 6,
 ):
     q_emb = embed_text(query, embed_client, embed_model)[0]
+    matches = re.findall(r'"([^"]*)"', query)
+    literal_text = {match.strip() for match in matches}
+    logger.info("Including literal text search {}", literal_text)
 
     with psycopg.connect(db_dsn) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            cur.execute(RETRIEVE, {"query": query, "emb": q_emb, "k": k})
+            cur.execute(RETRIEVE, {"query": query, "emb": q_emb, "k": k,
+                                   "literal_text": "|".join(literal_text) if literal_text else query})
             return cur.fetchall()
 
 
 def answer(query, history, chat_client: OpenAI, chat_model: str, embed_client: OpenAI, embed_model: str, db_dsn: str,
            chunk_limit=6):
+
     try:
         rows = retrieve(query, embed_client=embed_client, embed_model=embed_model, db_dsn=db_dsn, k=chunk_limit)
         row_file_set = set()
-        row_count = len(rows)
-        rows_size = row_count * len(rows[0][3])
-        print()
-        logger.info(f"Retrieved {row_count} chunks = {rows_size:,.1f} KB", feature="f-strings")
         for idx, r in enumerate(rows):
             sp_ci = f'[{r[0]}#chunk{r[2]}]'
-            logger.info(f"Result {idx}: {sp_ci} rank: {r[4]:.4}", feature="f-strings")
+            logger.info(f"Result {idx}: {sp_ci} rank: {r[4]:.4} length: {len(r[3]):,.1f}", feature="f-strings")
             if sp_ci in row_file_set:
                 logger.warning("Got duplicate chunk back from the sql query: {}", sp_ci)
             row_file_set.add(sp_ci)

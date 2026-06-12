@@ -21,9 +21,9 @@ RETRIEVE: Final[LiteralString] = """
 WITH fts_ranked AS (
     SELECT 
         source_path, chunk_index,
-        ROW_NUMBER() OVER (ORDER BY ts_rank(fts, websearch_to_tsquery('english', %(query)s)) DESC) AS fts_rank
+        ROW_NUMBER() OVER (ORDER BY ts_rank(fts, to_tsquery('english', %(literal_text)s)) DESC) AS fts_rank
     FROM documents
-    WHERE fts @@ websearch_to_tsquery('english', %(query)s)
+    WHERE fts @@ plainto_tsquery('english', %(literal_text)s)
     LIMIT 100 -- Fetch top candidates to find overlap
 ),
 vector_ranked AS (
